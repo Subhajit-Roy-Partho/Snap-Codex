@@ -1,0 +1,82 @@
+name: Build And Release Android APK
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile And Build APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Compile backend and contracts
+        run: npm run build
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: apps/mobile
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: apps/mobile
+        run: flutter build apk --release
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-mobile-release-apk
+          path: apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-mobile-release-apk
+          path: dist
+
+      - name: Rename artifact with tag
+        run: mv dist/app-release.apk dist/codex-mobile-${{ github.ref_name }}.apk
+
+      - name: Create release and upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/codex-mobile-${{ github.ref_name }}.apk
+          generate_release_notes: true

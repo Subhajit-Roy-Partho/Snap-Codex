@@ -1,0 +1,37 @@
+{
+  "name": "@codex/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "predev": "npm run -w @codex/contracts build",
+    "dev": "tsx watch src/index.ts",
+    "prebuild": "npm run -w @codex/contracts build",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "pretest": "npm run -w @codex/contracts build",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@codex/contracts": "0.1.0",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/websocket": "^11.2.0",
+    "dotenv": "^16.5.0",
+    "fastify": "^5.2.1",
+    "firebase-admin": "^13.2.0",
+    "uuid": "^11.1.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8",
+    "ws": "^8.18.1"
+  }
+}

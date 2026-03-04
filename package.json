@@ -1,0 +1,15 @@
+{
+  "name": "codex-web-platform",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run -w @codex/contracts build && npm run -w @codex/backend build",
+    "test": "npm run -w @codex/backend test",
+    "lint": "npm run -w @codex/backend lint",
+    "dev:backend": "npm run -w @codex/backend dev"
+  }
+}
