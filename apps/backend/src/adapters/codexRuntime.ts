@@ -284,6 +284,14 @@ const DEFAULT_RUNTIME_MODELS: Model[] = [
     defaultReasoningEffort: "medium"
   },
   {
+    id: "gpt-5.4",
+    displayName: "gpt-5.4",
+    capabilities: ["tool-use", "code", "reasoning"],
+    defaultProfileIds: ["xhigh", "yolo"],
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+    defaultReasoningEffort: "medium"
+  },
+  {
     id: "gpt-5.3-codex",
     displayName: "gpt-5.3-codex",
     capabilities: ["tool-use", "code", "reasoning"],

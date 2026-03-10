@@ -14,6 +14,14 @@ const defaultModels: Model[] = [
     defaultReasoningEffort: "medium"
   },
   {
+    id: "gpt-5.4",
+    displayName: "GPT-5.4",
+    capabilities: ["tool-use", "code", "reasoning"],
+    defaultProfileIds: ["xhigh", "yolo"],
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh"],
+    defaultReasoningEffort: "medium"
+  },
+  {
     id: "gpt-5-mini",
     displayName: "GPT-5 Mini",
     capabilities: ["chat", "code"],

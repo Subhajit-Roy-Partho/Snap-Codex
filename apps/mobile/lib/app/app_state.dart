@@ -5,6 +5,7 @@ class AppState {
     required this.loading,
     required this.error,
     required this.serverUrl,
+    required this.showDetailedToolbarLabels,
     required this.projectRoots,
     required this.projects,
     required this.models,
@@ -16,9 +17,13 @@ class AppState {
     required this.selectedReasoningEffortId,
     required this.selectedProfileId,
     required this.selectedCollaborationModeId,
+    required this.activeWorkspaceViewId,
     required this.activeSessionId,
     required this.messagesBySession,
     required this.diffBySession,
+    required this.projectFileListing,
+    required this.openProjectFile,
+    required this.openProjectFileDraft,
     required this.terminalSessions,
     required this.activeTerminalId,
     required this.terminalOutputById,
@@ -33,6 +38,7 @@ class AppState {
         loading: false,
         error: null,
         serverUrl: serverUrl,
+        showDetailedToolbarLabels: false,
         projectRoots: <String>[],
         projects: <ProjectItem>[],
         models: <ModelOption>[],
@@ -44,9 +50,13 @@ class AppState {
         selectedReasoningEffortId: null,
         selectedProfileId: null,
         selectedCollaborationModeId: null,
+        activeWorkspaceViewId: 'chat',
         activeSessionId: null,
         messagesBySession: <String, List<ChatMessage>>{},
         diffBySession: <String, SessionDiffState>{},
+        projectFileListing: null,
+        openProjectFile: null,
+        openProjectFileDraft: null,
         terminalSessions: <TerminalSessionItem>[],
         activeTerminalId: null,
         terminalOutputById: <String, String>{},
@@ -60,6 +70,7 @@ class AppState {
   final bool loading;
   final String? error;
   final String serverUrl;
+  final bool showDetailedToolbarLabels;
   final List<String> projectRoots;
   final List<ProjectItem> projects;
   final List<ModelOption> models;
@@ -71,9 +82,13 @@ class AppState {
   final String? selectedReasoningEffortId;
   final String? selectedProfileId;
   final String? selectedCollaborationModeId;
+  final String activeWorkspaceViewId;
   final String? activeSessionId;
   final Map<String, List<ChatMessage>> messagesBySession;
   final Map<String, SessionDiffState> diffBySession;
+  final ProjectFileListing? projectFileListing;
+  final ProjectFileDocument? openProjectFile;
+  final String? openProjectFileDraft;
   final List<TerminalSessionItem> terminalSessions;
   final String? activeTerminalId;
   final Map<String, String> terminalOutputById;
@@ -101,6 +116,15 @@ class AppState {
     return diffBySession[sessionId];
   }
 
+  bool get hasUnsavedOpenProjectFileChanges {
+    final file = openProjectFile;
+    if (file == null) {
+      return false;
+    }
+
+    return openProjectFileDraft != (file.content ?? '');
+  }
+
   String get activeTerminalOutput {
     final terminalId = activeTerminalId;
     if (terminalId == null) {
@@ -115,6 +139,7 @@ class AppState {
     String? error,
     bool clearError = false,
     String? serverUrl,
+    bool? showDetailedToolbarLabels,
     List<String>? projectRoots,
     List<ProjectItem>? projects,
     List<ModelOption>? models,
@@ -126,10 +151,17 @@ class AppState {
     String? selectedReasoningEffortId,
     String? selectedProfileId,
     String? selectedCollaborationModeId,
+    String? activeWorkspaceViewId,
     String? activeSessionId,
     bool clearActiveSessionId = false,
     Map<String, List<ChatMessage>>? messagesBySession,
     Map<String, SessionDiffState>? diffBySession,
+    ProjectFileListing? projectFileListing,
+    bool clearProjectFileListing = false,
+    ProjectFileDocument? openProjectFile,
+    bool clearOpenProjectFile = false,
+    String? openProjectFileDraft,
+    bool clearOpenProjectFileDraft = false,
     List<TerminalSessionItem>? terminalSessions,
     String? activeTerminalId,
     bool clearActiveTerminalId = false,
@@ -146,6 +178,8 @@ class AppState {
       loading: loading ?? this.loading,
       error: clearError ? null : error ?? this.error,
       serverUrl: serverUrl ?? this.serverUrl,
+      showDetailedToolbarLabels:
+          showDetailedToolbarLabels ?? this.showDetailedToolbarLabels,
       projectRoots: projectRoots ?? this.projectRoots,
       projects: projects ?? this.projects,
       models: models ?? this.models,
@@ -159,10 +193,20 @@ class AppState {
       selectedProfileId: selectedProfileId ?? this.selectedProfileId,
       selectedCollaborationModeId:
           selectedCollaborationModeId ?? this.selectedCollaborationModeId,
+      activeWorkspaceViewId:
+          activeWorkspaceViewId ?? this.activeWorkspaceViewId,
       activeSessionId:
           clearActiveSessionId ? null : activeSessionId ?? this.activeSessionId,
       messagesBySession: messagesBySession ?? this.messagesBySession,
       diffBySession: diffBySession ?? this.diffBySession,
+      projectFileListing: clearProjectFileListing
+          ? null
+          : projectFileListing ?? this.projectFileListing,
+      openProjectFile:
+          clearOpenProjectFile ? null : openProjectFile ?? this.openProjectFile,
+      openProjectFileDraft: clearOpenProjectFileDraft
+          ? null
+          : openProjectFileDraft ?? this.openProjectFileDraft,
       terminalSessions: terminalSessions ?? this.terminalSessions,
       activeTerminalId: clearActiveTerminalId
           ? null

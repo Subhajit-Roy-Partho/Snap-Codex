@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class ProjectItem {
   ProjectItem({
     required this.id,
@@ -75,6 +77,143 @@ class DirectoryBrowseResult {
           .toList(),
     );
   }
+}
+
+class ProjectFileEntry {
+  ProjectFileEntry({
+    required this.name,
+    required this.path,
+    required this.isDirectory,
+    required this.extension,
+    required this.sizeBytes,
+    required this.lastModifiedAt,
+    required this.readable,
+    required this.writable,
+  });
+
+  final String name;
+  final String path;
+  final bool isDirectory;
+  final String? extension;
+  final int? sizeBytes;
+  final DateTime? lastModifiedAt;
+  final bool readable;
+  final bool writable;
+
+  factory ProjectFileEntry.fromJson(Map<String, dynamic> json) {
+    return ProjectFileEntry(
+      name: json['name'] as String? ?? '',
+      path: json['path'] as String? ?? '',
+      isDirectory: json['isDirectory'] == true,
+      extension: json['extension'] as String?,
+      sizeBytes: (json['sizeBytes'] as num?)?.toInt(),
+      lastModifiedAt: json['lastModifiedAt'] == null
+          ? null
+          : DateTime.tryParse('${json['lastModifiedAt']}'),
+      readable: json['readable'] != false,
+      writable: json['writable'] != false,
+    );
+  }
+}
+
+class ProjectFileListing {
+  ProjectFileListing({
+    required this.projectId,
+    required this.projectPath,
+    required this.currentPath,
+    required this.parentPath,
+    required this.entries,
+  });
+
+  final String projectId;
+  final String projectPath;
+  final String currentPath;
+  final String? parentPath;
+  final List<ProjectFileEntry> entries;
+
+  factory ProjectFileListing.fromJson(Map<String, dynamic> json) {
+    return ProjectFileListing(
+      projectId: json['projectId'] as String? ?? '',
+      projectPath: json['projectPath'] as String? ?? '',
+      currentPath: json['currentPath'] as String? ?? '',
+      parentPath: json['parentPath'] as String?,
+      entries: (json['entries'] as List<dynamic>? ?? <dynamic>[])
+          .map((dynamic entry) =>
+              ProjectFileEntry.fromJson(entry as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class ProjectFileDocument {
+  ProjectFileDocument({
+    required this.projectId,
+    required this.projectPath,
+    required this.path,
+    required this.name,
+    required this.extension,
+    required this.sizeBytes,
+    required this.lastModifiedAt,
+    required this.readable,
+    required this.writable,
+    required this.isBinary,
+    required this.tooLarge,
+    required this.content,
+  });
+
+  final String projectId;
+  final String projectPath;
+  final String path;
+  final String name;
+  final String? extension;
+  final int sizeBytes;
+  final DateTime? lastModifiedAt;
+  final bool readable;
+  final bool writable;
+  final bool isBinary;
+  final bool tooLarge;
+  final String? content;
+
+  factory ProjectFileDocument.fromJson(Map<String, dynamic> json) {
+    return ProjectFileDocument(
+      projectId: json['projectId'] as String? ?? '',
+      projectPath: json['projectPath'] as String? ?? '',
+      path: json['path'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      extension: json['extension'] as String?,
+      sizeBytes: (json['sizeBytes'] as num?)?.toInt() ?? 0,
+      lastModifiedAt: json['lastModifiedAt'] == null
+          ? null
+          : DateTime.tryParse('${json['lastModifiedAt']}'),
+      readable: json['readable'] != false,
+      writable: json['writable'] != false,
+      isBinary: json['isBinary'] == true,
+      tooLarge: json['tooLarge'] == true,
+      content: json['content'] as String?,
+    );
+  }
+}
+
+class ProjectFileUpload {
+  ProjectFileUpload({
+    required this.fileName,
+    required this.bytes,
+  });
+
+  final String fileName;
+  final Uint8List bytes;
+}
+
+class ProjectFileDownload {
+  ProjectFileDownload({
+    required this.fileName,
+    required this.contentType,
+    required this.bytes,
+  });
+
+  final String fileName;
+  final String contentType;
+  final Uint8List bytes;
 }
 
 class SessionDiffLine {

@@ -4,6 +4,12 @@ node_modules/
 dist/
 coverage/
 *.log
+.DS_Store
+**/.DS_Store
+**/.idea/
+**/.vscode/
+**/*.xcuserstate
+**/DerivedData/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies

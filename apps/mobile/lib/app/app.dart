@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/chat/chat_screen.dart';
+import '../features/files/file_explorer_screen.dart';
 import '../features/projects/projects_drawer.dart';
 import '../models/app_models.dart';
 import '../theme/app_theme.dart';
@@ -195,18 +196,31 @@ class _CodexMobileAppState extends ConsumerState<CodexMobileApp> {
     final state = ref.watch(appControllerProvider);
     final controller = ref.read(appControllerProvider.notifier);
     final reasoningOptions = _reasoningOptionsForState(state);
+    final onSelectProject = state.activeWorkspaceViewId == 'files'
+        ? controller.selectProjectForFiles
+        : controller.selectProjectAndSwitch;
+    final onSelectProjectRoot = state.activeWorkspaceViewId == 'files'
+        ? controller.selectProjectRootForFiles
+        : controller.selectProjectRootAndSwitch;
     String? activeProjectId;
     String? activeProjectPath;
-    for (final session in state.sessions) {
-      if (session.id == state.activeSessionId) {
-        activeProjectId = session.projectId;
-        break;
+    if (state.activeWorkspaceViewId == 'files') {
+      activeProjectId = state.selectedProjectId;
+    } else {
+      for (final session in state.sessions) {
+        if (session.id == state.activeSessionId) {
+          activeProjectId = session.projectId;
+          break;
+        }
       }
     }
+    ProjectItem? selectedProject;
     for (final project in state.projects) {
       if (project.id == activeProjectId) {
         activeProjectPath = project.path;
-        break;
+      }
+      if (project.id == state.selectedProjectId) {
+        selectedProject = project;
       }
     }
     ref.listen(appControllerProvider, (previous, next) {
@@ -243,6 +257,30 @@ class _CodexMobileAppState extends ConsumerState<CodexMobileApp> {
                 ],
               ),
               actions: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: SegmentedButton<String>(
+                    segments: const <ButtonSegment<String>>[
+                      ButtonSegment<String>(
+                        value: 'chat',
+                        icon: Icon(Icons.chat_bubble_outline_rounded),
+                        label: Text('Chat'),
+                      ),
+                      ButtonSegment<String>(
+                        value: 'files',
+                        icon: Icon(Icons.folder_copy_outlined),
+                        label: Text('Files'),
+                      ),
+                    ],
+                    selected: <String>{state.activeWorkspaceViewId},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (Set<String> selection) {
+                      final nextView =
+                          selection.isEmpty ? 'chat' : selection.first;
+                      controller.setWorkspaceView(nextView);
+                    },
+                  ),
+                ),
                 Tooltip(
                   message: 'Server: ${state.serverUrl}',
                   child: IconButton(
@@ -289,8 +327,8 @@ class _CodexMobileAppState extends ConsumerState<CodexMobileApp> {
                     selectedProjectId: state.selectedProjectId,
                     activeProjectId: activeProjectId,
                     activeProjectPath: activeProjectPath,
-                    onSelectProject: controller.selectProjectAndSwitch,
-                    onSelectProjectRoot: controller.selectProjectRootAndSwitch,
+                    onSelectProject: onSelectProject,
+                    onSelectProjectRoot: onSelectProjectRoot,
                     onAddFolder: () => _showAddFolderDialog(
                         context, controller, state.projectRoots),
                   ),
@@ -306,6 +344,7 @@ class _CodexMobileAppState extends ConsumerState<CodexMobileApp> {
               selectedReasoningEffortId: state.selectedReasoningEffortId,
               selectedProfileId: state.selectedProfileId,
               selectedCollaborationModeId: state.selectedCollaborationModeId,
+              showDetailedToolbarLabels: state.showDetailedToolbarLabels,
               reasoningOptions: reasoningOptions,
               onModelSelected: controller.selectModel,
               onReasoningEffortSelected: controller.selectReasoningEffort,
@@ -313,6 +352,8 @@ class _CodexMobileAppState extends ConsumerState<CodexMobileApp> {
               onCollaborationModeSelected: controller.selectCollaborationMode,
               onSessionSelected: controller.setActiveSession,
               onTerminalSelected: controller.setActiveTerminal,
+              onShowDetailedToolbarLabelsChanged:
+                  controller.setShowDetailedToolbarLabels,
             ),
             body: Stack(
               children: <Widget>[
@@ -328,65 +369,89 @@ class _CodexMobileAppState extends ConsumerState<CodexMobileApp> {
                           selectedProjectId: state.selectedProjectId,
                           activeProjectId: activeProjectId,
                           activeProjectPath: activeProjectPath,
-                          onSelectProject: controller.selectProjectAndSwitch,
-                          onSelectProjectRoot:
-                              controller.selectProjectRootAndSwitch,
+                          onSelectProject: onSelectProject,
+                          onSelectProjectRoot: onSelectProjectRoot,
                           onAddFolder: () => _showAddFolderDialog(
                               context, controller, state.projectRoots),
                         ),
                       ),
                     Expanded(
-                      child: ChatScreen(
-                        messages: state.activeMessages,
-                        activeDiff: state.activeDiff,
-                        models: state.models,
-                        profiles: state.profiles,
-                        collaborationModes: state.collaborationModes,
-                        sessions: state.sessions,
-                        terminalSessions: state.terminalSessions,
-                        activeSessionId: state.activeSessionId,
-                        activeTerminalId: state.activeTerminalId,
-                        activeTerminalOutput: state.activeTerminalOutput,
-                        selectedModelId: state.selectedModelId,
-                        selectedReasoningEffortId:
-                            state.selectedReasoningEffortId,
-                        selectedProfileId: state.selectedProfileId,
-                        selectedCollaborationModeId:
-                            state.selectedCollaborationModeId,
-                        pendingPermissionRequestId:
-                            state.pendingPermissionRequestId,
-                        pendingUserInputRequestId:
-                            state.pendingUserInputRequestId,
-                        pendingUserInputQuestions:
-                            state.pendingUserInputQuestions,
-                        onModelSelected: controller.selectModel,
-                        onReasoningEffortSelected:
-                            controller.selectReasoningEffort,
-                        onProfileSelected: controller.selectProfile,
-                        onCollaborationModeSelected:
-                            controller.selectCollaborationMode,
-                        onSessionSelected: controller.setActiveSession,
-                        onTerminalSelected: controller.setActiveTerminal,
-                        onLoadHistory: controller.loadHistory,
-                        onResumeHistory: controller.resumeHistoryThread,
-                        onStartSession: () {
-                          controller.startNewSession();
-                        },
-                        onEnsureTerminal: controller.ensureTerminalSession,
-                        onCloseTerminal: controller.closeActiveTerminal,
-                        onRefreshChat: controller.refreshActiveChat,
-                        onSend: controller.sendMessage,
-                        onSendTerminalInput: controller.sendTerminalInput,
-                        onResizeTerminal: controller.resizeTerminal,
-                        onInterrupt: () {
-                          controller.interrupt();
-                        },
-                        onApprovePermission: () =>
-                            controller.respondPermission(true),
-                        onDenyPermission: () =>
-                            controller.respondPermission(false),
-                        onRespondUserInput: controller.respondUserInput,
-                      ),
+                      child: state.activeWorkspaceViewId == 'files'
+                          ? FileExplorerScreen(
+                              project: selectedProject,
+                              listing: state.projectFileListing,
+                              openFile: state.openProjectFile,
+                              openFileDraft: state.openProjectFileDraft,
+                              hasUnsavedChanges:
+                                  state.hasUnsavedOpenProjectFileChanges,
+                              onBrowseDirectory: (String path) =>
+                                  controller.browseProjectFiles(path: path),
+                              onOpenFile: controller.openProjectFile,
+                              onDraftChanged:
+                                  controller.updateOpenProjectFileDraft,
+                              onRefresh: () => controller.browseProjectFiles(
+                                path:
+                                    state.projectFileListing?.currentPath ?? '',
+                              ),
+                              onSaveFile: controller.saveOpenProjectFile,
+                              onUploadFiles: controller.uploadProjectFiles,
+                              onDownloadFile: controller.downloadProjectFile,
+                            )
+                          : ChatScreen(
+                              messages: state.activeMessages,
+                              activeDiff: state.activeDiff,
+                              models: state.models,
+                              profiles: state.profiles,
+                              collaborationModes: state.collaborationModes,
+                              sessions: state.sessions,
+                              terminalSessions: state.terminalSessions,
+                              activeSessionId: state.activeSessionId,
+                              activeTerminalId: state.activeTerminalId,
+                              activeTerminalOutput: state.activeTerminalOutput,
+                              selectedModelId: state.selectedModelId,
+                              selectedReasoningEffortId:
+                                  state.selectedReasoningEffortId,
+                              selectedProfileId: state.selectedProfileId,
+                              selectedCollaborationModeId:
+                                  state.selectedCollaborationModeId,
+                              pendingPermissionRequestId:
+                                  state.pendingPermissionRequestId,
+                              pendingUserInputRequestId:
+                                  state.pendingUserInputRequestId,
+                              pendingUserInputQuestions:
+                                  state.pendingUserInputQuestions,
+                              showDetailedToolbarLabels:
+                                  state.showDetailedToolbarLabels,
+                              onModelSelected: controller.selectModel,
+                              onReasoningEffortSelected:
+                                  controller.selectReasoningEffort,
+                              onProfileSelected: controller.selectProfile,
+                              onCollaborationModeSelected:
+                                  controller.selectCollaborationMode,
+                              onSessionSelected: controller.setActiveSession,
+                              onTerminalSelected: controller.setActiveTerminal,
+                              onLoadHistory: controller.loadHistory,
+                              onResumeHistory: controller.resumeHistoryThread,
+                              onStartSession: () {
+                                controller.startNewSession();
+                              },
+                              onEnsureTerminal:
+                                  controller.ensureTerminalSession,
+                              onStartTerminal: controller.createTerminalSession,
+                              onCloseTerminal: controller.closeActiveTerminal,
+                              onRefreshChat: controller.refreshActiveChat,
+                              onSend: controller.sendMessage,
+                              onSendTerminalInput: controller.sendTerminalInput,
+                              onResizeTerminal: controller.resizeTerminal,
+                              onInterrupt: () {
+                                controller.interrupt();
+                              },
+                              onApprovePermission: () =>
+                                  controller.respondPermission(true),
+                              onDenyPermission: () =>
+                                  controller.respondPermission(false),
+                              onRespondUserInput: controller.respondUserInput,
+                            ),
                     ),
                   ],
                 ),

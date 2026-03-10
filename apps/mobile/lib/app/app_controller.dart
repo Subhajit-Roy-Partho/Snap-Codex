@@ -61,6 +61,8 @@ class AppController extends StateNotifier<AppState> {
   }
 
   static const String _serverUrlPreferenceKey = 'backend_server_url';
+  static const String _detailedToolbarLabelsPreferenceKey =
+      'show_detailed_toolbar_labels';
   static const int _maxTerminalOutputLength = 400000;
 
   late ApiClient _apiClient;
@@ -177,6 +179,9 @@ class AppController extends StateNotifier<AppState> {
         runtimeStatusMessage: runtimeHealth.message,
       );
 
+      if (state.activeWorkspaceViewId == 'files' && selectedProjectId != null) {
+        await browseProjectFiles(projectId: selectedProjectId);
+      }
       if (activeSessionId != null) {
         await _activateSession(activeSessionId);
       }
@@ -218,6 +223,9 @@ class AppController extends StateNotifier<AppState> {
       diffBySession: const <String, SessionDiffState>{},
       terminalSessions: const <TerminalSessionItem>[],
       terminalOutputById: const <String, String>{},
+      clearProjectFileListing: true,
+      clearOpenProjectFile: true,
+      clearOpenProjectFileDraft: true,
       clearActiveSessionId: true,
       clearActiveTerminalId: true,
       clearPendingPermissionRequest: true,
@@ -331,6 +339,55 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(selectedCollaborationModeId: collaborationModeId);
   }
 
+  Future<void> setShowDetailedToolbarLabels(bool value) async {
+    if (value == state.showDetailedToolbarLabels) {
+      return;
+    }
+
+    state = state.copyWith(showDetailedToolbarLabels: value);
+
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_detailedToolbarLabelsPreferenceKey, value);
+  }
+
+  Future<void> setWorkspaceView(String viewId) async {
+    final normalized = viewId == 'files' ? 'files' : 'chat';
+    state = state.copyWith(
+      activeWorkspaceViewId: normalized,
+      clearError: true,
+    );
+
+    if (normalized != 'files') {
+      return;
+    }
+
+    final projectId = state.selectedProjectId ??
+        _pickExistingOrFirst(
+            null, state.projects.map((item) => item.id).toList());
+
+    if (projectId == null) {
+      state = state.copyWith(
+        error: 'Add or select a project before opening the file explorer.',
+      );
+      return;
+    }
+
+    if (projectId != state.selectedProjectId) {
+      state = state.copyWith(selectedProjectId: projectId);
+    }
+
+    await browseProjectFiles(projectId: projectId);
+  }
+
+  Future<void> selectProjectForFiles(String projectId) async {
+    state = state.copyWith(
+      selectedProjectId: projectId,
+      activeWorkspaceViewId: 'files',
+      clearError: true,
+    );
+    await browseProjectFiles(projectId: projectId);
+  }
+
   Future<void> addProjectRoot(String folderPath) async {
     final trimmed = folderPath.trim();
     if (trimmed.isEmpty) {
@@ -375,6 +432,193 @@ class AppController extends StateNotifier<AppState> {
       basePath: basePath,
       limit: limit,
     );
+  }
+
+  Future<void> selectProjectRootForFiles(String rootPath) async {
+    final normalizedRoot = _normalizeFsPath(rootPath);
+    if (normalizedRoot.isEmpty) {
+      return;
+    }
+
+    state = state.copyWith(clearError: true, activeWorkspaceViewId: 'files');
+
+    var project = _bestProjectForRoot(normalizedRoot, state.projects);
+    if (project == null) {
+      final refreshed = await _refreshProjectsAndRoots();
+      if (!refreshed) {
+        return;
+      }
+
+      project = _bestProjectForRoot(normalizedRoot, state.projects);
+      if (project == null) {
+        state = state.copyWith(
+          error:
+              'No project found under "$normalizedRoot". Add or scan this folder first.',
+        );
+        return;
+      }
+    }
+
+    await selectProjectForFiles(project.id);
+  }
+
+  Future<void> browseProjectFiles({
+    String? projectId,
+    String path = '',
+  }) async {
+    final resolvedProjectId = projectId ?? state.selectedProjectId;
+    if (resolvedProjectId == null) {
+      state = state.copyWith(
+        error: 'Select a project before browsing files.',
+      );
+      return;
+    }
+
+    state = state.copyWith(loading: true, clearError: true);
+    try {
+      final listing = await _apiClient.fetchProjectFiles(
+        projectId: resolvedProjectId,
+        path: _normalizeProjectRelativePath(path),
+      );
+      final shouldClearOpenFile = state.openProjectFile != null &&
+          state.openProjectFile!.projectId != resolvedProjectId;
+      state = state.copyWith(
+        loading: false,
+        selectedProjectId: resolvedProjectId,
+        projectFileListing: listing,
+        clearOpenProjectFile: shouldClearOpenFile,
+        clearOpenProjectFileDraft: shouldClearOpenFile,
+      );
+    } catch (error) {
+      state = state.copyWith(loading: false, error: '$error');
+    }
+  }
+
+  Future<void> openProjectFile(
+    String filePath, {
+    String? projectId,
+  }) async {
+    final resolvedProjectId = projectId ?? state.selectedProjectId;
+    if (resolvedProjectId == null) {
+      state = state.copyWith(
+        error: 'Select a project before opening files.',
+      );
+      return;
+    }
+
+    final normalizedPath = _normalizeProjectRelativePath(filePath);
+    if (normalizedPath.isEmpty) {
+      return;
+    }
+
+    state = state.copyWith(loading: true, clearError: true);
+    try {
+      final document = await _apiClient.fetchProjectFile(
+        projectId: resolvedProjectId,
+        path: normalizedPath,
+      );
+      state = state.copyWith(
+        loading: false,
+        selectedProjectId: resolvedProjectId,
+        openProjectFile: document,
+        openProjectFileDraft: document.content ?? '',
+      );
+    } catch (error) {
+      state = state.copyWith(loading: false, error: '$error');
+    }
+  }
+
+  void updateOpenProjectFileDraft(String value) {
+    state = state.copyWith(openProjectFileDraft: value);
+  }
+
+  Future<void> saveOpenProjectFile() async {
+    final openFile = state.openProjectFile;
+    if (openFile == null) {
+      return;
+    }
+
+    if (!openFile.writable || openFile.isBinary || openFile.tooLarge) {
+      state = state.copyWith(error: 'This file cannot be edited in the app.');
+      return;
+    }
+
+    final draft = state.openProjectFileDraft ?? openFile.content ?? '';
+    state = state.copyWith(loading: true, clearError: true);
+    try {
+      final updated = await _apiClient.saveProjectFile(
+        projectId: openFile.projectId,
+        path: openFile.path,
+        content: draft,
+      );
+      state = state.copyWith(
+        loading: false,
+        openProjectFile: updated,
+        openProjectFileDraft: updated.content ?? '',
+      );
+
+      if (state.projectFileListing?.projectId == openFile.projectId) {
+        await browseProjectFiles(
+          projectId: openFile.projectId,
+          path: _directoryPathForFile(openFile.path),
+        );
+      }
+    } catch (error) {
+      state = state.copyWith(loading: false, error: '$error');
+    }
+  }
+
+  Future<void> uploadProjectFiles(List<ProjectFileUpload> files) async {
+    if (files.isEmpty) {
+      return;
+    }
+
+    final projectId = state.selectedProjectId;
+    if (projectId == null) {
+      state = state.copyWith(
+        error: 'Select a project before uploading files.',
+      );
+      return;
+    }
+
+    final directoryPath = state.projectFileListing?.currentPath ?? '';
+
+    state = state.copyWith(loading: true, clearError: true);
+    try {
+      for (final file in files) {
+        await _apiClient.uploadProjectFile(
+          projectId: projectId,
+          directoryPath: directoryPath,
+          fileName: file.fileName,
+          bytes: file.bytes,
+        );
+      }
+
+      state = state.copyWith(loading: false);
+      await browseProjectFiles(projectId: projectId, path: directoryPath);
+    } catch (error) {
+      state = state.copyWith(loading: false, error: '$error');
+    }
+  }
+
+  Future<ProjectFileDownload?> downloadProjectFile(String filePath) async {
+    final projectId = state.selectedProjectId;
+    if (projectId == null) {
+      state = state.copyWith(
+        error: 'Select a project before downloading files.',
+      );
+      return null;
+    }
+
+    try {
+      return await _apiClient.downloadProjectFile(
+        projectId: projectId,
+        path: _normalizeProjectRelativePath(filePath),
+      );
+    } catch (error) {
+      state = state.copyWith(error: '$error');
+      return null;
+    }
   }
 
   Future<HistoryPage> loadHistory({
@@ -571,11 +815,13 @@ class AppController extends StateNotifier<AppState> {
     _ensureSocketConnected();
     _socketService.subscribeSession(sessionId);
 
+    ChatSession? latestSession;
     try {
-      final latestSession = await _apiClient.fetchSession(sessionId);
+      final fetchedSession = await _apiClient.fetchSession(sessionId);
+      latestSession = fetchedSession;
       final updatedSessions = state.sessions
           .map((session) =>
-              session.id == latestSession.id ? latestSession : session)
+              session.id == fetchedSession.id ? fetchedSession : session)
           .toList();
       state = state.copyWith(sessions: updatedSessions);
     } catch (_) {
@@ -588,6 +834,10 @@ class AppController extends StateNotifier<AppState> {
           Map<String, List<ChatMessage>>.from(state.messagesBySession)
             ..[sessionId] = messages;
       state = state.copyWith(messagesBySession: updatedMap);
+
+      if (state.activeWorkspaceViewId == 'files' && latestSession != null) {
+        await browseProjectFiles(projectId: latestSession.projectId);
+      }
     } catch (error) {
       state = state.copyWith(error: '$error');
     }
@@ -627,18 +877,24 @@ class AppController extends StateNotifier<AppState> {
 
   Future<void> ensureTerminalSession() async {
     final activeTerminalId = state.activeTerminalId;
-    if (activeTerminalId != null &&
-        state.terminalSessions
-            .any((terminal) => terminal.id == activeTerminalId)) {
-      await _activateTerminal(activeTerminalId);
+    final activeTerminal = _terminalSessionById(activeTerminalId);
+    if (activeTerminal != null && activeTerminal.running) {
+      await _activateTerminal(activeTerminal.id);
       return;
     }
 
-    final cwd = _selectedProjectPath();
-    await createTerminalSession(cwd: cwd);
+    final runningTerminals =
+        state.terminalSessions.where((terminal) => terminal.running).toList();
+    if (runningTerminals.isNotEmpty) {
+      await _activateTerminal(runningTerminals.last.id);
+      return;
+    }
+
+    await createTerminalSession();
   }
 
   Future<void> createTerminalSession({String? cwd}) async {
+    final resolvedCwd = cwd ?? _selectedProjectPath();
     final threadId = _activeSessionThreadId();
     final bootstrapCommands = <String>[
       if (threadId != null && threadId.trim().isNotEmpty)
@@ -647,7 +903,7 @@ class AppController extends StateNotifier<AppState> {
 
     try {
       final snapshot = await _apiClient.createTerminalSession(
-        cwd: cwd,
+        cwd: resolvedCwd,
         shell: '/bin/zsh',
         bootstrap: bootstrapCommands,
       );
@@ -735,24 +991,34 @@ class AppController extends StateNotifier<AppState> {
       return;
     }
 
+    final terminal = _terminalSessionById(terminalId);
     try {
       await _apiClient.closeTerminalSession(terminalId);
-      _socketService.unsubscribeTerminal(terminalId);
-
-      final existing = state.terminalSessions
-          .where((terminal) => terminal.id != terminalId)
-          .toList();
-      final nextActive = existing.isEmpty ? null : existing.last.id;
-
-      state = state.copyWith(
-        activeTerminalId: nextActive,
-      );
-
-      if (nextActive != null) {
-        await _activateTerminal(nextActive);
-      }
     } catch (error) {
-      state = state.copyWith(error: '$error');
+      if (terminal == null || terminal.running) {
+        state = state.copyWith(error: '$error');
+        return;
+      }
+    }
+
+    _socketService.unsubscribeTerminal(terminalId);
+
+    final remaining =
+        state.terminalSessions.where((item) => item.id != terminalId).toList();
+    final updatedOutput = Map<String, String>.from(state.terminalOutputById)
+      ..remove(terminalId);
+    final nextActive = _preferredTerminalId(remaining);
+
+    state = state.copyWith(
+      clearError: true,
+      terminalSessions: remaining,
+      terminalOutputById: updatedOutput,
+      activeTerminalId: nextActive,
+      clearActiveTerminalId: nextActive == null,
+    );
+
+    if (nextActive != null) {
+      await _activateTerminal(nextActive);
     }
   }
 
@@ -1375,6 +1641,33 @@ class AppController extends StateNotifier<AppState> {
     return existing;
   }
 
+  TerminalSessionItem? _terminalSessionById(String? terminalId) {
+    if (terminalId == null) {
+      return null;
+    }
+
+    for (final terminal in state.terminalSessions) {
+      if (terminal.id == terminalId) {
+        return terminal;
+      }
+    }
+
+    return null;
+  }
+
+  String? _preferredTerminalId(List<TerminalSessionItem> sessions) {
+    if (sessions.isEmpty) {
+      return null;
+    }
+
+    final running = sessions.where((terminal) => terminal.running).toList();
+    if (running.isNotEmpty) {
+      return running.last.id;
+    }
+
+    return sessions.last.id;
+  }
+
   String? _selectedProjectPath() {
     final projectId = state.selectedProjectId;
     if (projectId == null) {
@@ -1401,6 +1694,25 @@ class AppController extends StateNotifier<AppState> {
     }
 
     return null;
+  }
+
+  String _normalizeProjectRelativePath(String input) {
+    final trimmed = input.trim().replaceAll('\\', '/');
+    if (trimmed.isEmpty || trimmed == '.') {
+      return '';
+    }
+
+    return trimmed.startsWith('/') ? trimmed.substring(1) : trimmed;
+  }
+
+  String _directoryPathForFile(String input) {
+    final normalized = _normalizeProjectRelativePath(input);
+    if (normalized.isEmpty || !normalized.contains('/')) {
+      return '';
+    }
+
+    final parts = normalized.split('/');
+    return parts.sublist(0, parts.length - 1).join('/');
   }
 
   String _trimTerminalOutput(String output) {
@@ -1444,6 +1756,8 @@ class AppController extends StateNotifier<AppState> {
   Future<void> _loadPersistedServerUrl() async {
     final preferences = await SharedPreferences.getInstance();
     final stored = preferences.getString(_serverUrlPreferenceKey);
+    final showDetailedToolbarLabels =
+        preferences.getBool(_detailedToolbarLabelsPreferenceKey);
     final normalized = _normalizeUrl(stored ?? '');
 
     if (normalized.isNotEmpty && normalized != _backendBaseUrl) {
@@ -1451,7 +1765,11 @@ class AppController extends StateNotifier<AppState> {
       _apiClient = ApiClient(baseUrl: _backendBaseUrl, token: _token);
     }
 
-    state = state.copyWith(serverUrl: _backendBaseUrl);
+    state = state.copyWith(
+      serverUrl: _backendBaseUrl,
+      showDetailedToolbarLabels:
+          showDetailedToolbarLabels ?? state.showDetailedToolbarLabels,
+    );
   }
 
   String _wsBaseUrl() {

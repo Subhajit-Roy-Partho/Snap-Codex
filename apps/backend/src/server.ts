@@ -24,6 +24,7 @@ import { config as baseConfig, type AppConfig } from "./config.js";
 import { createRuntime, type CodexRuntime } from "./adapters/codexRuntime.js";
 import { ProjectScanner } from "./services/projectScanner.js";
 import { NotificationService } from "./services/notificationService.js";
+import { ProjectFileService } from "./services/projectFileService.js";
 import { SessionManager } from "./services/sessionManager.js";
 import { ProjectRootsStore } from "./services/projectRootsStore.js";
 import { TerminalManager } from "./services/terminalManager.js";
@@ -143,6 +144,7 @@ export const createApp = async (options: CreateAppOptions = {}) => {
     notificationService
   );
   const terminalManager = new TerminalManager();
+  const projectFileService = new ProjectFileService(() => store.getProjects());
 
   const refreshModels = async (): Promise<void> => {
     try {
@@ -420,6 +422,142 @@ export const createApp = async (options: CreateAppOptions = {}) => {
   app.post("/projects/scan", async () => {
     await refreshProjects();
     return { projects: store.getProjects() };
+  });
+  app.get("/projects/:id/files", async (request, reply) => {
+    const params = request.params as { id: string };
+    const query = request.query as {
+      path?: string;
+      limit?: string | number;
+    };
+
+    try {
+      const listing = await projectFileService.listDirectory(
+        params.id,
+        query.path?.trim() ?? "",
+        parseLimit(query.limit, 400, 800)
+      );
+      return listing;
+    } catch (error) {
+      const message = (error as Error).message;
+      const statusCode =
+        message.includes("not found")
+          ? 404
+          : message.includes("not readable")
+            ? 403
+            : 400;
+      return reply.code(statusCode).send({ error: message });
+    }
+  });
+  app.get("/projects/:id/files/content", async (request, reply) => {
+    const params = request.params as { id: string };
+    const query = request.query as {
+      path?: string;
+    };
+
+    try {
+      const document = await projectFileService.readDocument(
+        params.id,
+        query.path?.trim() ?? ""
+      );
+      return document;
+    } catch (error) {
+      const message = (error as Error).message;
+      const statusCode =
+        message.includes("does not exist") || message.includes("not found")
+          ? 404
+          : message.includes("not readable")
+            ? 403
+            : 400;
+      return reply.code(statusCode).send({ error: message });
+    }
+  });
+  app.put("/projects/:id/files/content", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body =
+      typeof request.body === "object" && request.body !== null
+        ? (request.body as { path?: string; content?: string })
+        : {};
+    const inputPath = `${body.path ?? ""}`.trim();
+
+    if (!inputPath) {
+      return reply.code(400).send({ error: "File path is required." });
+    }
+    if (typeof body.content !== "string") {
+      return reply.code(400).send({ error: "File content must be a string." });
+    }
+
+    try {
+      const document = await projectFileService.writeDocument(
+        params.id,
+        inputPath,
+        body.content
+      );
+      return document;
+    } catch (error) {
+      const message = (error as Error).message;
+      const statusCode = message.includes("not found") ? 404 : 400;
+      return reply.code(statusCode).send({ error: message });
+    }
+  });
+  app.post("/projects/:id/files/upload", async (request, reply) => {
+    const params = request.params as { id: string };
+    const body =
+      typeof request.body === "object" && request.body !== null
+        ? (request.body as {
+            directoryPath?: string;
+            fileName?: string;
+            contentBase64?: string;
+          })
+        : {};
+    const fileName = `${body.fileName ?? ""}`.trim();
+    const contentBase64 = `${body.contentBase64 ?? ""}`.trim();
+
+    if (!fileName) {
+      return reply.code(400).send({ error: "File name is required." });
+    }
+    if (!contentBase64) {
+      return reply.code(400).send({ error: "File content is required." });
+    }
+
+    try {
+      const file = await projectFileService.uploadFile(
+        params.id,
+        `${body.directoryPath ?? ""}`.trim(),
+        fileName,
+        contentBase64
+      );
+      return { file };
+    } catch (error) {
+      const message = (error as Error).message;
+      const statusCode = message.includes("not found") ? 404 : 400;
+      return reply.code(statusCode).send({ error: message });
+    }
+  });
+  app.get("/projects/:id/files/download", async (request, reply) => {
+    const params = request.params as { id: string };
+    const query = request.query as { path?: string };
+    const inputPath = query.path?.trim() ?? "";
+    if (!inputPath) {
+      return reply.code(400).send({ error: "File path is required." });
+    }
+
+    try {
+      const download = await projectFileService.downloadFile(params.id, inputPath);
+      reply.header("content-type", download.contentType);
+      reply.header("x-codex-file-name", download.fileName);
+      reply.header(
+        "content-disposition",
+        `attachment; filename="${encodeURIComponent(download.fileName)}"`
+      );
+      return reply.send(download.data);
+    } catch (error) {
+      const message = (error as Error).message;
+      const statusCode =
+        message.includes("does not exist") || message.includes("not found")
+          ? 404
+          : 400;
+      return reply.code(statusCode).send({ error: message });
+    }
   });
   app.get("/models", async () => ({ models: catalogs.models }));
   app.get("/profiles", async () => ({ profiles }));

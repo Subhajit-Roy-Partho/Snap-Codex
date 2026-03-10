@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -154,6 +155,130 @@ class ApiClient {
     return (body['suggestions'] as List<dynamic>? ?? <dynamic>[])
         .map((dynamic entry) => '$entry')
         .toList();
+  }
+
+  Future<ProjectFileListing> fetchProjectFiles({
+    required String projectId,
+    String path = '',
+    int limit = 400,
+  }) async {
+    final uri = Uri.parse('$baseUrl/projects/$projectId/files').replace(
+      queryParameters: <String, String>{
+        'path': path,
+        'limit': '$limit',
+      },
+    );
+
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(
+        _extractErrorMessage(response, 'Failed to load project files'),
+      );
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ProjectFileListing.fromJson(body);
+  }
+
+  Future<ProjectFileDocument> fetchProjectFile({
+    required String projectId,
+    required String path,
+  }) async {
+    final uri = Uri.parse('$baseUrl/projects/$projectId/files/content').replace(
+      queryParameters: <String, String>{'path': path},
+    );
+
+    final response = await http.get(uri, headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(
+        _extractErrorMessage(response, 'Failed to open file'),
+      );
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ProjectFileDocument.fromJson(body);
+  }
+
+  Future<ProjectFileDocument> saveProjectFile({
+    required String projectId,
+    required String path,
+    required String content,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/projects/$projectId/files/content'),
+      headers: _headers,
+      body: jsonEncode(<String, dynamic>{
+        'path': path,
+        'content': content,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        _extractErrorMessage(response, 'Failed to save file'),
+      );
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ProjectFileDocument.fromJson(body);
+  }
+
+  Future<ProjectFileEntry> uploadProjectFile({
+    required String projectId,
+    required String directoryPath,
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/projects/$projectId/files/upload'),
+      headers: _headers,
+      body: jsonEncode(<String, dynamic>{
+        'directoryPath': directoryPath,
+        'fileName': fileName,
+        'contentBase64': base64Encode(bytes),
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        _extractErrorMessage(response, 'Failed to upload file'),
+      );
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ProjectFileEntry.fromJson(
+      body['file'] as Map<String, dynamic>? ?? <String, dynamic>{},
+    );
+  }
+
+  Future<ProjectFileDownload> downloadProjectFile({
+    required String projectId,
+    required String path,
+  }) async {
+    final uri =
+        Uri.parse('$baseUrl/projects/$projectId/files/download').replace(
+      queryParameters: <String, String>{'path': path},
+    );
+    final response = await http.get(
+      uri,
+      headers: <String, String>{'x-api-token': token},
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        _extractErrorMessage(response, 'Failed to download file'),
+      );
+    }
+
+    final fileName = response.headers['x-codex-file-name'] ??
+        path.split('/').where((segment) => segment.isNotEmpty).last;
+
+    return ProjectFileDownload(
+      fileName: fileName,
+      contentType:
+          response.headers['content-type'] ?? 'application/octet-stream',
+      bytes: response.bodyBytes,
+    );
   }
 
   Future<List<ModelOption>> fetchModels() async {

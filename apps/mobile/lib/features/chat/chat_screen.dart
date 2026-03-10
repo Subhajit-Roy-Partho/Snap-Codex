@@ -27,6 +27,7 @@ class ChatScreen extends StatefulWidget {
     required this.pendingPermissionRequestId,
     required this.pendingUserInputRequestId,
     required this.pendingUserInputQuestions,
+    required this.showDetailedToolbarLabels,
     required this.onModelSelected,
     required this.onReasoningEffortSelected,
     required this.onProfileSelected,
@@ -37,6 +38,7 @@ class ChatScreen extends StatefulWidget {
     required this.onResumeHistory,
     required this.onStartSession,
     required this.onEnsureTerminal,
+    required this.onStartTerminal,
     required this.onCloseTerminal,
     required this.onRefreshChat,
     required this.onSend,
@@ -65,6 +67,7 @@ class ChatScreen extends StatefulWidget {
   final String? pendingPermissionRequestId;
   final String? pendingUserInputRequestId;
   final List<UserInputQuestion> pendingUserInputQuestions;
+  final bool showDetailedToolbarLabels;
 
   final ValueChanged<String> onModelSelected;
   final ValueChanged<String> onReasoningEffortSelected;
@@ -79,6 +82,7 @@ class ChatScreen extends StatefulWidget {
   final Future<bool> Function(HistoryThread thread) onResumeHistory;
   final VoidCallback onStartSession;
   final Future<void> Function() onEnsureTerminal;
+  final Future<void> Function() onStartTerminal;
   final Future<void> Function() onCloseTerminal;
   final Future<void> Function() onRefreshChat;
   final Future<void> Function(String text, {bool requestPermission}) onSend;
@@ -330,6 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
               viewMode: _viewMode,
               activeTerminalId: widget.activeTerminalId,
               refreshingChat: _refreshingChat,
+              showDetailedToolbarLabels: widget.showDetailedToolbarLabels,
               onViewModeChanged: (_ConversationViewMode nextMode) {
                 setState(() {
                   _viewMode = nextMode;
@@ -345,7 +350,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 Scaffold.maybeOf(context)?.openEndDrawer();
               },
               onStartTerminal: () {
-                widget.onEnsureTerminal();
+                widget.onStartTerminal();
               },
               onCloseTerminal: () {
                 widget.onCloseTerminal();
@@ -445,6 +450,7 @@ class ChatSettingsDrawer extends StatelessWidget {
     required this.selectedReasoningEffortId,
     required this.selectedProfileId,
     required this.selectedCollaborationModeId,
+    required this.showDetailedToolbarLabels,
     required this.reasoningOptions,
     required this.onModelSelected,
     required this.onReasoningEffortSelected,
@@ -452,6 +458,7 @@ class ChatSettingsDrawer extends StatelessWidget {
     required this.onCollaborationModeSelected,
     required this.onSessionSelected,
     required this.onTerminalSelected,
+    required this.onShowDetailedToolbarLabelsChanged,
   });
 
   final List<ModelOption> models;
@@ -465,6 +472,7 @@ class ChatSettingsDrawer extends StatelessWidget {
   final String? selectedReasoningEffortId;
   final String? selectedProfileId;
   final String? selectedCollaborationModeId;
+  final bool showDetailedToolbarLabels;
   final List<String> reasoningOptions;
   final ValueChanged<String> onModelSelected;
   final ValueChanged<String> onReasoningEffortSelected;
@@ -472,6 +480,7 @@ class ChatSettingsDrawer extends StatelessWidget {
   final ValueChanged<String> onCollaborationModeSelected;
   final ValueChanged<String> onSessionSelected;
   final ValueChanged<String> onTerminalSelected;
+  final ValueChanged<bool> onShowDetailedToolbarLabelsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -497,6 +506,32 @@ class ChatSettingsDrawer extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: AppPalette.slate.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: SwitchListTile.adaptive(
+                  value: showDetailedToolbarLabels,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  activeThumbColor: AppPalette.sky,
+                  activeTrackColor: AppPalette.sky.withValues(alpha: 0.34),
+                  title: const Text(
+                    'Detailed toolbar labels',
+                    style: TextStyle(
+                      color: AppPalette.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Turn this off to keep Chat and Terminal controls icon-only.',
+                    style: TextStyle(color: AppPalette.textMuted),
+                  ),
+                  onChanged: onShowDetailedToolbarLabelsChanged,
+                ),
+              ),
               _SettingsDropdown<String>(
                 label: 'Model',
                 value: selectedModelId,
@@ -621,6 +656,7 @@ class _TopToolbar extends StatelessWidget {
     required this.viewMode,
     required this.activeTerminalId,
     required this.refreshingChat,
+    required this.showDetailedToolbarLabels,
     required this.onViewModeChanged,
     required this.onOpenHistory,
     required this.onStartSession,
@@ -634,6 +670,7 @@ class _TopToolbar extends StatelessWidget {
   final _ConversationViewMode viewMode;
   final String? activeTerminalId;
   final bool refreshingChat;
+  final bool showDetailedToolbarLabels;
   final ValueChanged<_ConversationViewMode> onViewModeChanged;
   final VoidCallback onOpenHistory;
   final VoidCallback onStartSession;
@@ -642,6 +679,98 @@ class _TopToolbar extends StatelessWidget {
   final VoidCallback onStartTerminal;
   final VoidCallback onCloseTerminal;
   final VoidCallback onInterrupt;
+
+  List<ButtonSegment<_ConversationViewMode>> _buildViewSegments() {
+    if (showDetailedToolbarLabels) {
+      return const <ButtonSegment<_ConversationViewMode>>[
+        ButtonSegment<_ConversationViewMode>(
+          value: _ConversationViewMode.chat,
+          label: Text('Chat'),
+          icon: Icon(Icons.chat_bubble_outline),
+        ),
+        ButtonSegment<_ConversationViewMode>(
+          value: _ConversationViewMode.terminal,
+          label: Text('Terminal'),
+          icon: Icon(Icons.terminal_rounded),
+        ),
+      ];
+    }
+
+    return const <ButtonSegment<_ConversationViewMode>>[
+      ButtonSegment<_ConversationViewMode>(
+        value: _ConversationViewMode.chat,
+        icon: Tooltip(
+          message: 'Chat',
+          child: Icon(Icons.chat_bubble_outline),
+        ),
+      ),
+      ButtonSegment<_ConversationViewMode>(
+        value: _ConversationViewMode.terminal,
+        icon: Tooltip(
+          message: 'Terminal',
+          child: Icon(Icons.terminal_rounded),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildToolbarAction({
+    required String label,
+    required String tooltip,
+    required Widget icon,
+    required VoidCallback? onPressed,
+    bool filled = false,
+  }) {
+    if (showDetailedToolbarLabels) {
+      if (filled) {
+        return FilledButton.tonal(
+          onPressed: onPressed,
+          child: Text(label),
+        );
+      }
+
+      return OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: icon,
+        label: Text(label),
+      );
+    }
+
+    final compactChild = SizedBox(
+      width: 18,
+      height: 18,
+      child: Center(child: icon),
+    );
+
+    final compactStyle = filled
+        ? FilledButton.styleFrom(
+            minimumSize: const Size(40, 40),
+            padding: EdgeInsets.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          )
+        : OutlinedButton.styleFrom(
+            minimumSize: const Size(40, 40),
+            padding: EdgeInsets.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          );
+
+    final compactButton = filled
+        ? FilledButton.tonal(
+            onPressed: onPressed,
+            style: compactStyle,
+            child: compactChild,
+          )
+        : OutlinedButton(
+            onPressed: onPressed,
+            style: compactStyle,
+            child: compactChild,
+          );
+
+    return Tooltip(
+      message: tooltip,
+      child: compactButton,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -655,18 +784,7 @@ class _TopToolbar extends StatelessWidget {
           SegmentedButton<_ConversationViewMode>(
             selected: <_ConversationViewMode>{viewMode},
             showSelectedIcon: false,
-            segments: const <ButtonSegment<_ConversationViewMode>>[
-              ButtonSegment<_ConversationViewMode>(
-                value: _ConversationViewMode.chat,
-                label: Text('Chat'),
-                icon: Icon(Icons.chat_bubble_outline),
-              ),
-              ButtonSegment<_ConversationViewMode>(
-                value: _ConversationViewMode.terminal,
-                label: Text('Terminal'),
-                icon: Icon(Icons.terminal_rounded),
-              ),
-            ],
+            segments: _buildViewSegments(),
             onSelectionChanged: (Set<_ConversationViewMode> selected) {
               if (selected.isEmpty) {
                 return;
@@ -675,32 +793,45 @@ class _TopToolbar extends StatelessWidget {
             },
           ),
           if (viewMode == _ConversationViewMode.chat)
-            FilledButton.tonal(
+            _buildToolbarAction(
+              label: 'New',
+              tooltip: 'New chat',
+              icon: const Icon(Icons.add_comment_outlined),
               onPressed: onStartSession,
-              child: const Text('New'),
+              filled: true,
             ),
           if (viewMode == _ConversationViewMode.chat)
-            OutlinedButton(
+            _buildToolbarAction(
+              label: 'History',
+              tooltip: 'History',
+              icon: const Icon(Icons.history_rounded),
               onPressed: onOpenHistory,
-              child: const Text('History'),
             ),
           if (viewMode == _ConversationViewMode.chat)
-            OutlinedButton(
+            _buildToolbarAction(
+              label: 'Interrupt',
+              tooltip: 'Interrupt',
+              icon: const Icon(Icons.stop_circle_outlined),
               onPressed: onInterrupt,
-              child: const Text('Interrupt'),
             ),
           if (viewMode == _ConversationViewMode.terminal)
-            FilledButton.tonal(
+            _buildToolbarAction(
+              label: 'New Term',
+              tooltip: 'New terminal',
+              icon: const Icon(Icons.add_box_outlined),
               onPressed: onStartTerminal,
-              child: const Text('New Term'),
+              filled: true,
             ),
           if (viewMode == _ConversationViewMode.terminal)
-            OutlinedButton(
+            _buildToolbarAction(
+              label: 'Close Term',
+              tooltip: 'Close terminal',
+              icon: const Icon(Icons.close_rounded),
               onPressed: activeTerminalId == null ? null : onCloseTerminal,
-              child: const Text('Close Term'),
             ),
-          OutlinedButton.icon(
-            onPressed: refreshingChat ? null : onRefreshChat,
+          _buildToolbarAction(
+            label: 'Refresh',
+            tooltip: 'Refresh',
             icon: refreshingChat
                 ? const SizedBox(
                     width: 14,
@@ -708,12 +839,13 @@ class _TopToolbar extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh_rounded),
-            label: const Text('Refresh'),
+            onPressed: refreshingChat ? null : onRefreshChat,
           ),
-          OutlinedButton.icon(
-            onPressed: onOpenSettings,
+          _buildToolbarAction(
+            label: 'Settings',
+            tooltip: 'Settings',
             icon: const Icon(Icons.tune_rounded),
-            label: const Text('Settings'),
+            onPressed: onOpenSettings,
           ),
         ],
       ),
@@ -776,7 +908,7 @@ class _TerminalSurface extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         alignment: Alignment.centerLeft,
         child: const Text(
-          'No active terminal. Click "New Term" to start one.',
+          'No active terminal. Start one from the toolbar.',
           style: TextStyle(color: AppPalette.textMuted),
         ),
       );

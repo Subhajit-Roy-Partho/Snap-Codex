@@ -265,8 +265,15 @@ export class TerminalManager {
       return;
     }
 
+    this.sessions.delete(terminalId);
+
     if (entry.session.running) {
       entry.process.kill("SIGTERM");
+      return;
+    }
+
+    if (entry.session.endedAt === null) {
+      entry.session.endedAt = new Date().toISOString();
     }
   }
 
